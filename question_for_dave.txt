@@ -1,0 +1,17 @@
+Although an LSTM is being used, the benefits of using an LSTM are not being
+exploited because only a snapshot of the current state of the market is
+inputted - as opposed to a sequential series of market data.
+
+Was that the final version of Matt's thesis?
+
+Will I be able to use the new concurrent version of BSE?
+Is that in Python 3? (noticed Aaron stuck with Python 2.7)
+
+Noticed DeepLOB used LSE for training and testing, could this be possible for 
+DeepTrader?
+
+Papers looked over talk about time-series prediction, is DeepTrader a
+time-series prediction or does it just spit out a price based on the LOB?
+
+Would it be possible to try and train deeptrader to choose its own limit price?
+(e.g. training it to predict a price and enter when profit forseen?)

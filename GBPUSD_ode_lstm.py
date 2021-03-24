@@ -61,7 +61,8 @@ class GBPUSDDataModule(pl.LightningDataModule):
         print(time_in_seconds.shape)
         plt.plot(time_in_seconds[:,1], time_in_seconds[:,0])
         plt.show()
-        df['LocalTime'] = delta_t
+        # df['LocalTime'] = delta_t
+        df['LocalTime'] = time_in_seconds
         return df
 
     def convert_to_midprice(self, df):

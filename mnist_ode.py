@@ -56,11 +56,11 @@ class ODE(pl.LightningModule):
     
     def training_step(self, train_batch, batch_idx):
         inputs, labels = train_batch
+        
         labels = F.one_hot(labels, 10)
         labels = labels.to(torch.float32)
         # batch = inputs.shape[0]
         # inputs = inputs.view(batch, -1)
-
         logits = self(inputs)
         
         criterion = nn.MSELoss()
@@ -73,7 +73,6 @@ class ODE(pl.LightningModule):
         # inputs = inputs.view(batch, -1) 
 
         logits = self(inputs)
-
         total = 0
         correct = 0
         for i in range(logits[0].shape[0]):

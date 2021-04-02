@@ -21,21 +21,25 @@ import statistics
 import matplotlib.pyplot as plt
 
 class GBPUSDDataModule(pl.LightningDataModule):
-    def __init__(self, window=10, batch_size=1):
+    def __init__(self, window=10, batch_size=1, time_projection=10):
         super().__init__()
         self.window = window
         self.batch_size = batch_size
+        self.time_projection = time_projection
 
     def setup(self, stage=None):
         df = pd.read_csv(r"C:\Users\Angus Parsonson\Documents\University\Fourth Year\Dissertation\data\GBPUSD_Ticks_08.03.2021-08.03.2021.csv")
         train = self.prep_data(self.convert_to_seconds(df[:3000]))
         test = self.prep_data(self.convert_to_seconds(df[3000:4000]))
-        
+        # plt.plot(train[:,0], train[:,1])
+        # plt.show()
+        # plt.plot(test[:,0], test[:,1])
+        # plt.show()
         self.train_data = self.sequence_data(train, self.window)
         self.test_data = self.sequence_data(test, self.window)
 
     def train_dataloader(self):
-        train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, shuffle=True)
+        train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, shuffle=False)
 
         return train_dataloader
 
@@ -43,6 +47,11 @@ class GBPUSDDataModule(pl.LightningDataModule):
         test_dataloader = DataLoader(self.test_data, batch_size=self.batch_size, shuffle=False)
 
         return test_dataloader
+
+    def normalise(self, data):
+        mp = data[:,1]
+        data[:,1] = (mp - mp.min()) / (mp.max() - mp.min())
+        return data
 
     def convert_to_seconds(self, df):
         df = self.convert_to_midprice(df)
@@ -58,25 +67,43 @@ class GBPUSDDataModule(pl.LightningDataModule):
             time_in_seconds.append([row['Midprice'], time])
             prev_time = time
         time_in_seconds = np.array(time_in_seconds)
-        print(time_in_seconds.shape)
-        plt.plot(time_in_seconds[:,1], time_in_seconds[:,0])
-        plt.show()
-        # df['LocalTime'] = delta_t
-        df['LocalTime'] = time_in_seconds
+        # plt.plot(time_in_seconds[:,1], time_in_seconds[:,0])
+        # plt.show()
+        df['LocalTime'] = time_in_seconds[:,1]
         return df
 
     def convert_to_midprice(self, df):
-        df['Midprice'] = (df['Ask'] + df['Bid']) / 2
+        df['Midprice'] = (df['Ask'] + df['Bid']) / float(2.0)
         return df
 
     def sequence_data(self, data, window):
         sequence = []
+        size = len(data)
         for i in range(0, len(data)-window):
             inputs_seq = data[i:i+window]
             label = data[i+window:i+window+1]
+            j = i+window-1
+            curr_midprice = data[j][1]
+            curr_time = data[j][0]
+            while (j < len(data) and data[j][0] < curr_time+self.time_projection):
+                j += 1
+            if (j >= len(data)):
+                size = i+window-1
+                break
+            
+            if (data[j][1] > curr_midprice):
+                label = 0
+            elif (data[j][1] == curr_midprice):
+                label = 1
+            else:
+                label = 2
+            # print(data[i+window-1][1])
+            # print(data[j][1])
+            # print(label)
             sequence.append((inputs_seq, label))
         
-        return sequence
+        return sequence[:size]
+
 
     def prep_data(self, data):
         data.drop('Ask', axis=1, inplace=True)
@@ -84,7 +111,7 @@ class GBPUSDDataModule(pl.LightningDataModule):
         data.drop('AskVolume', axis=1, inplace=True)
         data.drop('BidVolume', axis=1, inplace=True)
         data = torch.FloatTensor(data.to_numpy())
-
+        data = self.normalise(data)
         return data
 
 class ODELSTMCell(nn.Module):
@@ -102,15 +129,23 @@ class ODELSTMCell(nn.Module):
         self.ode = NeuralDE(self.fc, solver='rk4', sensitivity='autograd')
     
     def forward(self, inputs, hx, ts):
+        # print("inputs: ")
+        # print(inputs.shape)
+        # print(inputs)
+        # print("ts: ")
+        # print(ts.shape)
+        # print(ts)
         new_h, new_c = self.lstm(inputs, hx)
-        indices = torch.argsort(ts)
-        batch_size = ts.size(0)
-        s_sort = ts[indices]
-        s_sort = s_sort + torch.linspace(0, 1e-4, batch_size)
-        # HACK: Make sure no two points are equal
-        trajectory = self.ode.trajectory(new_h, s_sort)
-        new_h = trajectory[indices, torch.arange(batch_size)]
+        # indices = torch.argsort(ts)
+        # batch_size = ts.size(0)
+        # s_sort = ts[indices]
+        # s_sort = s_sort + torch.linspace(0, 1e-4, batch_size)
+        # # HACK: Make sure no two points are equal
         
+        # trajectory = self.ode.trajectory(new_h, ts)
+        # # new_h = trajectory[indices, torch.arange(batch_size)]
+        # new_h = trajectory[indices, torch.arange(batch_size)]
+        # print(new_h)
         return (new_h, new_c)
 
 class ODELSTM(pl.LightningModule):
@@ -120,11 +155,12 @@ class ODELSTM(pl.LightningModule):
         self.hidden_size = hidden_size
         
         self.cell = ODELSTMCell(input_size, hidden_size)
-        self.fc = nn.Linear(self.hidden_size, 1)
+        self.fc = nn.Linear(self.hidden_size, 3)
 
     def forward(self, x, timespans):
         batch_size = x.size(0)
         seq_len = x.size(1)
+        
         hidden_state = (
             torch.zeros((batch_size, self.hidden_size)),
             torch.zeros((batch_size, self.hidden_size)),
@@ -132,7 +168,6 @@ class ODELSTM(pl.LightningModule):
 
         outputs = []
         last_output = torch.zeros((batch_size, 1))
-
         for t in range(seq_len):
             inputs = torch.unsqueeze(x[:, t], 1)
             ts = timespans[:, t].squeeze()
@@ -149,40 +184,44 @@ class ODELSTM(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = batch
         logits = self.forward(x[:,:,1], x[:,:,0])
-        labels = y[:,:,1]
+        labels = F.one_hot(y, 3)
+        labels = labels.to(torch.float32)
+        # batch = inputs.shape[0]
+        # inputs = inputs.view(batch, -1)
+
         criterion = nn.MSELoss()
         loss = criterion(logits, labels)
 
         return loss
     
     def test_step(self, batch, batch_idx):
-        x, y = batch
+        x, labels = batch
         logits = self.forward(x[:,:,1], x[:,:,0])
-        labels = y[:,:,1]
-        criterion = nn.MSELoss()
-        loss = criterion(logits, labels)
+        total = 0
+        correct = 0
+        for i in range(len(logits)):
+            pred = logits[i].argmax(dim=0, keepdim=True)
+            if (pred[0] == labels[i]):
+                correct += 1
+            total += 1
 
-        items = [x.item() for x in logits]
-
-        return {'predictions': items}
+        metrics = {'correct': correct, 'total': total}
+        return metrics
 
     def test_epoch_end(self, outputs):
-        preds = [x['predictions'] for x in outputs]
-        results = []
-        for i in range (len(preds)):
-            for pred in preds[i]:
-                results.append(pred)
-        # print(np.array(preds))
-        plt.plot(results)
-        plt.show()    
+        correct = sum([x['correct'] for x in outputs])
+        total = sum([x['total'] for x in outputs])
+        
+        return {'overall_accuracy': 100*correct/total}   
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=0.001)
+        return torch.optim.Adam(self.parameters(), lr=0.0001)
+        
 
 if __name__ == '__main__':
-    data_module = GBPUSDDataModule(50, 16)
-    model = ODELSTM(1, 100)
-    trainer = pl.Trainer(max_epochs=2)
+    data_module = GBPUSDDataModule(window=50, batch_size=16, time_projection=5)
+    model = ODELSTM(input_size=1, hidden_size=30)
+    trainer = pl.Trainer(max_epochs=20)
     trainer.fit(model, data_module)
     trainer.test()
 

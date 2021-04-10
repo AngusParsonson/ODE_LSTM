@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 
 import pytorch_lightning as pl
@@ -19,6 +20,20 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 import statistics
 import matplotlib.pyplot as plt
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+class timeseries(Dataset):
+    def __init__(self,x,y):
+        self.x = torch.tensor(x,dtype=torch.float32)
+        self.y = torch.tensor(y,dtype=torch.float32)
+        self.len = x.shape[0]
+
+    def __getitem__(self,idx):
+        return self.x[idx],self.y[idx]
+  
+    def __len__(self):
+        return self.len
 
 class GBPUSDDataModule(pl.LightningDataModule):
     def __init__(self, window=10, batch_size=1, time_projection=10):
@@ -39,7 +54,9 @@ class GBPUSDDataModule(pl.LightningDataModule):
         self.test_data = self.sequence_data(test, self.window)
 
     def train_dataloader(self):
-        train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, shuffle=False)
+        # print(self.train_data[0].shape)
+        train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, shuffle=True)
+        # test_dataloader = DataLoader(self.test_data, batch_size=self.batch_size, shuffle=False)
 
         return train_dataloader
 
@@ -78,6 +95,9 @@ class GBPUSDDataModule(pl.LightningDataModule):
 
     def sequence_data(self, data, window):
         sequence = []
+        stag = 0
+        up = 0
+        dwn = 0
         size = len(data)
         for i in range(0, len(data)-window):
             inputs_seq = data[i:i+window]
@@ -91,17 +111,19 @@ class GBPUSDDataModule(pl.LightningDataModule):
                 size = i+window-1
                 break
             
-            if (data[j][1] > curr_midprice):
+            if (data[j][1] > curr_midprice + 0.005):
                 label = 0
-            elif (data[j][1] == curr_midprice):
-                label = 1
-            else:
+                up += 1
+            elif (data[j][1] < curr_midprice - 0.005):
                 label = 2
-            # print(data[i+window-1][1])
-            # print(data[j][1])
-            # print(label)
+                dwn += 1
+            else:
+                label = 1
+                stag += 1
+            
             sequence.append((inputs_seq, label))
-        
+        print("up: " + str(up) + " , down: " + str(dwn) + ", stagnant: " + str(stag))
+
         return sequence[:size]
 
 
@@ -113,6 +135,64 @@ class GBPUSDDataModule(pl.LightningDataModule):
         data = torch.FloatTensor(data.to_numpy())
         data = self.normalise(data)
         return data
+
+class LSTM(pl.LightningModule):
+    def __init__(self, input_size=1, hidden_size=100, num_layers=1, batch_size=1, output_size=3):
+        super().__init__()
+        self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers)
+
+        self.fc = nn.Linear(hidden_size, output_size)
+        self.hidden_cell = (torch.zeros(num_layers, batch_size, hidden_size),
+                            torch.zeros(num_layers, batch_size, hidden_size))
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.tanh = nn.Tanh()
+
+    def forward(self, x):
+        self.hidden_cell = (torch.zeros(self.num_layers, len(x), self.hidden_size),
+                            torch.zeros(self.num_layers, len(x), self.hidden_size))
+
+        lstm_out, self.hidden = self.lstm(x.view(-1, len(x), 1), self.hidden_cell)
+        predictions = self.fc(self.hidden[0].view(-1, self.hidden_size))
+
+        return predictions
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self.forward(batch[:][0][:,:,1])
+        labels = F.one_hot(y, 3)
+        labels = labels.to(torch.float32)
+        # batch = inputs.shape[0]
+        # inputs = inputs.view(batch, -1)
+
+        criterion = nn.MSELoss()
+        loss = criterion(logits, labels)
+
+        return loss
+    
+    def test_step(self, batch, batch_idx):
+        x, labels = batch
+        logits = self.forward(batch[:][0][:,:,1])
+        total = 0
+        correct = 0
+        for i in range(len(logits)):
+            pred = logits[i].argmax(dim=0, keepdim=True)
+            print(pred)
+            if (pred[0] == labels[i]):
+                correct += 1
+            total += 1
+
+        metrics = {'correct': correct, 'total': total}
+        return metrics
+
+    def test_epoch_end(self, outputs):
+        correct = sum([x['correct'] for x in outputs])
+        total = sum([x['total'] for x in outputs])
+        print(100*correct/total)
+        return {'overall_accuracy': 100*correct/total}   
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=1e-5)
 
 class ODELSTMCell(nn.Module):
     def __init__(self, input_size, hidden_size):
@@ -129,23 +209,21 @@ class ODELSTMCell(nn.Module):
         self.ode = NeuralDE(self.fc, solver='rk4', sensitivity='autograd')
     
     def forward(self, inputs, hx, ts):
-        # print("inputs: ")
-        # print(inputs.shape)
-        # print(inputs)
-        # print("ts: ")
-        # print(ts.shape)
-        # print(ts)
-        new_h, new_c = self.lstm(inputs, hx)
-        # indices = torch.argsort(ts)
-        # batch_size = ts.size(0)
-        # s_sort = ts[indices]
-        # s_sort = s_sort + torch.linspace(0, 1e-4, batch_size)
-        # # HACK: Make sure no two points are equal
+        batch_size = ts.size(0)
         
-        # trajectory = self.ode.trajectory(new_h, ts)
-        # # new_h = trajectory[indices, torch.arange(batch_size)]
-        # new_h = trajectory[indices, torch.arange(batch_size)]
-        # print(new_h)
+        trajectory = []
+        for i, t in enumerate(ts):
+            trajectory.append(self.ode.trajectory(hx[0], t)[1])
+        trajectory = torch.stack(trajectory)
+        
+        new_h = trajectory[torch.arange(batch_size),torch.arange(batch_size),:]
+
+        new_h, new_c = self.lstm(inputs, (new_h, hx[1]))
+        new_h, new_c = self.lstm(inputs, (new_h, new_c))
+
+        # new_h, new_c = self.lstm(inputs, hx)
+        # new_h, new_c = self.lstm(inputs, (new_h, new_c))
+
         return (new_h, new_c)
 
 class ODELSTM(pl.LightningModule):
@@ -168,9 +246,13 @@ class ODELSTM(pl.LightningModule):
 
         outputs = []
         last_output = torch.zeros((batch_size, 1))
-        for t in range(seq_len):
+        
+        for t in range(1, seq_len):
             inputs = torch.unsqueeze(x[:, t], 1)
-            ts = timespans[:, t].squeeze()
+            # ts = torch.stack([timespans[:, t].squeeze(), last_ts])
+            ts = timespans[:,t-1:t+1]
+            
+            # ts = timespans[:, t].squeeze()
             # ts = torch.unsqueeze(timespans[:, t], 1)
             hidden_state = self.cell.forward(inputs, hidden_state, ts)
             current_output = self.fc(hidden_state[0])
@@ -188,8 +270,10 @@ class ODELSTM(pl.LightningModule):
         labels = labels.to(torch.float32)
         # batch = inputs.shape[0]
         # inputs = inputs.view(batch, -1)
+        # for log in logits:
+        #     print(log.argmax(dim=0, keepdim=True))
 
-        criterion = nn.MSELoss()
+        criterion = nn.MSELoss(reduction='mean')
         loss = criterion(logits, labels)
 
         return loss
@@ -201,6 +285,7 @@ class ODELSTM(pl.LightningModule):
         correct = 0
         for i in range(len(logits)):
             pred = logits[i].argmax(dim=0, keepdim=True)
+            print(pred)
             if (pred[0] == labels[i]):
                 correct += 1
             total += 1
@@ -211,17 +296,19 @@ class ODELSTM(pl.LightningModule):
     def test_epoch_end(self, outputs):
         correct = sum([x['correct'] for x in outputs])
         total = sum([x['total'] for x in outputs])
-        
+        print(100*correct/total)
         return {'overall_accuracy': 100*correct/total}   
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=0.0001)
+        return torch.optim.Adam(self.parameters(), lr=1e-1)
         
 
 if __name__ == '__main__':
-    data_module = GBPUSDDataModule(window=50, batch_size=16, time_projection=5)
-    model = ODELSTM(input_size=1, hidden_size=30)
-    trainer = pl.Trainer(max_epochs=20)
+    # print(torch.cuda.is_available())
+    data_module = GBPUSDDataModule(window=10, batch_size=16, time_projection=1)
+    # model = LSTM(input_size=1, hidden_size=100, batch_size=3)
+    model = ODELSTM(1, hidden_size=100)
+    trainer = pl.Trainer(max_epochs=10)
     trainer.fit(model, data_module)
     trainer.test()
 

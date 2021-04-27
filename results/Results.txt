@@ -1,0 +1,12 @@
+LSTM, 100 epochs, 1e-5 lr, 100 seq_len, pred_horizon 100: 63.068783
+^^ pred_horizon 20: 57.23
+
+LSTM binary, WTB, pred_horizon 20: 68.03
+^^ pred_horizon 50: 68.30
+^^ pred_horizon 100: 66.12
+
+ODE LSTM binary, 1e-5 lr, WTB, pred_horizon 20:
+pred_horizon 50: 
+
+LSTM binary, GBPUSD, pred_horizon 20: 
+^^ pred_horizon 100: 55.00

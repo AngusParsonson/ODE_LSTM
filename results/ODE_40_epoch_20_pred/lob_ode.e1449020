@@ -1,0 +1,25 @@
+GPU available: True, used: True
+TPU available: False, using: 0 TPU cores
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+2021-04-18 15:33:03.469417: W tensorflow/stream_executor/platform/default/dso_loader.cc:59] Could not load dynamic library 'libcudart.so.10.1'; dlerror: libcudart.so.10.1: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: /sw/lang/gcc-9.1.0/lib64:/sw/lang/gcc-9.1.0/lib
+2021-04-18 15:33:03.469472: I tensorflow/stream_executor/cuda/cudart_stub.cc:29] Ignore above cudart dlerror if you do not have a GPU set up on your machine.
+
+  | Name    | Type        | Params
+----------------------------------------
+0 | cell    | ODELSTMCell | 63.8 K
+1 | fc1     | Linear      | 10.1 K
+2 | fc2     | Linear      | 303   
+3 | relu    | ReLU        | 0     
+4 | dropout | Dropout     | 0     
+5 | soft    | Softmax     | 0     
+6 | bn      | BatchNorm1d | 100   
+----------------------------------------
+74.3 K    Trainable params
+0         Non-trainable params
+74.3 K    Total params
+0.297     Total estimated model params size (MB)
+/home/ap17691/.local/lib/python3.8/site-packages/pytorch_lightning/utilities/distributed.py:69: UserWarning: The dataloader, train dataloader, does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` (try 16 which is the number of cpus on this machine) in the `DataLoader` init to improve performance.
+  warnings.warn(*args, **kwargs)
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+/home/ap17691/.local/lib/python3.8/site-packages/pytorch_lightning/utilities/distributed.py:69: UserWarning: The dataloader, test dataloader 0, does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` (try 16 which is the number of cpus on this machine) in the `DataLoader` init to improve performance.
+  warnings.warn(*args, **kwargs)

@@ -1,0 +1,322 @@
+!pip install git+https://github.com/PyTorchLightning/pytorch-lightning
+!pip install git+https://github.com/DiffEqML/torchdyn.git
+import sys
+
+from google.colab import drive
+drive.mount("/content/gdrive")
+
+# from google.colab import files
+# uploaded = files.upload()
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
+from torchvision import datasets, transforms
+
+import pytorch_lightning as pl
+from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.metrics.functional import accuracy
+
+import seaborn as sns 
+import numpy as np
+import pandas as pd 
+from sklearn.preprocessing import MinMaxScaler
+import statistics
+import matplotlib.pyplot as plt
+
+from torchdyn.models import *
+from torchdyn import *
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+class timeseries(Dataset):
+    def __init__(self,x,y,with_time=True):
+        if with_time:
+            self.x = torch.tensor(x,dtype=torch.float32)[:,:,[0,1,3]]
+        else:
+            self.x = torch.tensor(x,dtype=torch.float32)[:,:,[1,3]]
+        
+        print(self.x.shape)
+        self.y = torch.tensor(y,dtype=torch.long)
+        self.len = x.shape[0]
+
+    def __getitem__(self,idx):
+        return self.x[idx],self.y[idx]
+  
+    def __len__(self):
+        return self.len
+
+class GBPUSDDataModule(pl.LightningDataModule):
+    def __init__(self, window=10, batch_size=1, pred_horizon=10, with_time=True):
+        super().__init__()
+        self.window = window
+        self.batch_size = batch_size
+        self.pred_horizon = pred_horizon
+        self.with_time = with_time
+
+    def setup(self, stage=None):
+        df = pd.read_csv(r"/content/gdrive/My Drive/lob_data/GBPUSD_Ticks_08.03.2021-08.03.2021.csv")
+        train = self.prep_data(self.convert_to_seconds(df[:1000]))
+        test = self.prep_data(self.convert_to_seconds(df[1000:2000]))
+        
+        X_train, Y_train = self.sequence_data(train, self.window)
+        X_test, Y_test = self.sequence_data(test, self.window)
+    
+        self.train_data = timeseries(X_train, Y_train, with_time=self.with_time)
+        self.test_data = timeseries(X_test, Y_test, with_time=self.with_time)
+
+    def train_dataloader(self):
+        train_dataloader = DataLoader(self.train_data, batch_size=self.batch_size, shuffle=True)
+        # train_dataloader = DataLoader(self.test_data, batch_size=self.batch_size, shuffle=False)
+
+        return train_dataloader
+
+    def test_dataloader(self):
+        test_dataloader = DataLoader(self.test_data, batch_size=self.batch_size, shuffle=False)
+
+        return test_dataloader
+
+    def normalise(self, data):
+        mc = data[:,1]
+        data[:,1] = (mc - mc.min()) / (mc.max() - mc.min())
+        return data
+
+    def convert_to_seconds(self, df):
+        df = self.convert_to_midprice(df, moving_avg_size=self.pred_horizon)
+        delta_t = []
+        time_in_seconds = []
+        prev_time = 0.0
+        for index, row in df.iterrows():
+            tokens = row['LocalTime'].split()
+            time = tokens[1]
+            h, m, s = time.split(':')
+            time = float(int(h) * 3600 + int(m) * 60 + float(s))
+            delta_t.append(time - prev_time)
+            time_in_seconds.append([row['Midprice'], time])
+            prev_time = time
+        time_in_seconds = np.array(time_in_seconds)
+        # plt.plot(time_in_seconds[:,1], time_in_seconds[:,0])
+        # plt.show()
+        df['LocalTime'] = time_in_seconds[:,1]
+        return df
+
+    def convert_to_midprice(self, df, moving_avg_size=5, smoothing=2):
+        df['Midprice'] = (df['Ask'] + df['Bid']) / float(2.0)
+        df['Microprice'] = (df['Bid']*df['AskVolume'] + df['Ask']*df['BidVolume']) / (df['AskVolume'] + df['BidVolume'])
+        MicroExpMovingAvg = []
+        mult = smoothing / (1.0 + moving_avg_size)
+        sma = 0.0
+        for i in range(len(df)):
+            # print(df.iloc[i]['Microprice'])
+            if (i < moving_avg_size):
+                sma += df.iloc[i]['Microprice']
+                MicroExpMovingAvg.append(sma/float(i+1))
+            else:
+                MicroExpMovingAvg.append((df.iloc[i]['Microprice'] * mult) + (MicroExpMovingAvg[i-1]) * (1.0 - mult))
+
+        # print(MicroExpMovingAvg)
+        df['MicroExpMovingAvg'] = MicroExpMovingAvg
+        return df
+
+    def sequence_data(self, data, window):
+        X = []
+        Y = []
+        stag = 0
+        up = 0
+        dwn = 0
+        L = []
+        for i in range(0, len(data)-window):
+            j = i+window-1
+            next_dir_idx = j+self.pred_horizon
+            curr_dir_idx = i-1
+            curr_mvavg = data[j][2]
+            curr_time = data[j][0]
+            
+            prev_label = 0
+            if (next_dir_idx < len(data)):
+                if (curr_dir_idx >= 0):
+                    prev_label = Y[curr_dir_idx]
+
+                lt = (data[next_dir_idx][2] - curr_mvavg) / curr_mvavg
+                alpha = 0.00002
+                if (lt > alpha):
+                    label = 2
+                    up += 1
+                elif (lt < -alpha):
+                    label = 0
+                    dwn += 1
+                else:
+                    label = 1
+                    stag += 1
+                # print(i, j, curr_dir_idx, data[i], data[j], label, prev_label, len(Y))
+                L.append([curr_time, label])
+                seq = data[i:i+window]
+                inputs_seq = []
+                for i in range(0, len(seq)):
+                    inputs_seq.append(np.append(seq[i], prev_label))
+                
+                X.append(inputs_seq)
+                Y.append(label)
+
+        prev_lab = 0
+        prev_time = data[0][0]
+        shades = []
+        for l in L:
+            if (prev_lab != l[1]):
+                shades.append([prev_time, l[0], prev_lab])
+                prev_time = l[0]
+                prev_lab = l[1]
+        
+        for shade in shades:
+            if shade[2] == 0:
+                col = 'r'
+            elif shade[2] == 1:
+                col = 'b'
+            else:
+                col = 'g'
+
+            # plt.axvspan(shade[0], shade[1], color=col, alpha=0.5, lw=0)
+        # plt.plot(data[:,0], data[:,1])
+        
+        # plt.show()
+        # np.set_printoptions(threshold=sys.maxsize)
+        # print(np.array(X[:self.pred_horizon]))            
+        print("up: " + str(up) + " , down: " + str(dwn) + ", stagnant: " + str(stag))
+        return np.array(X[self.pred_horizon:]), np.array(Y[self.pred_horizon:])
+
+
+    def prep_data(self, data):
+        # with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
+        #     print(data)
+        # print(data.iloc[0:2000].to_string())
+        data.drop('Ask', axis=1, inplace=True)
+        data.drop('Bid', axis=1, inplace=True)
+        data.drop('AskVolume', axis=1, inplace=True)
+        data.drop('BidVolume', axis=1, inplace=True)
+        data.drop('Midprice', axis=1, inplace=True)
+        data = self.normalise(np.array(data))
+        
+        return data
+
+class ODELSTMCell(nn.Module):
+    def __init__(self, input_size, hidden_size):
+        super(ODELSTMCell, self).__init__()
+        self.lstm = nn.LSTMCell(input_size, hidden_size).to(device)
+        self.fc = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.Tanh(),
+            nn.Linear(hidden_size, hidden_size)
+        ).to(device)
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+
+        self.ode = NeuralDE(self.fc, solver='rk4', sensitivity='autograd').to(device)
+    
+    def forward(self, inputs, hx, ts):
+        batch_size = ts.size(0)
+
+        new_h = torch.zeros(batch_size, hx[0].size(1)).to(device)
+        for batch_idx, batch in enumerate(ts):
+            new_h[batch_idx] = self.ode.trajectory(hx[0][batch_idx], batch)[1].to(device)
+
+        new_h, new_c = self.lstm(inputs, (new_h.to(device), hx[1].to(device)))
+        new_h, new_c = self.lstm(inputs, (new_h.to(device), new_c.to(device)))
+
+        # new_h, new_c = self.lstm(inputs, hx)
+        # new_h, new_c = self.lstm(inputs, (new_h, new_c))
+
+        return (new_h, new_c)
+
+class ODELSTM(pl.LightningModule):
+    def __init__(self, input_size=2, hidden_size=100, seq_len=10, output_size=3):
+        super(ODELSTM, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        
+        self.cell = ODELSTMCell(input_size, hidden_size)
+        self.fc1 = nn.Linear(hidden_size, 100)
+        self.fc2 = nn.Linear(100, output_size)
+        self.seq_len = seq_len
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.5)
+        self.soft = nn.Softmax(dim=-1)
+        self.bn = nn.BatchNorm1d(self.seq_len)
+
+    def forward(self, x, timespans):
+        batch_size = x.size(0)
+        seq_len = x.size(1)
+
+        hidden_state = (
+            torch.zeros((batch_size, self.hidden_size)),
+            torch.zeros((batch_size, self.hidden_size)),
+        )
+
+        outputs = []
+        x = self.bn(x)
+        for t in range(1, seq_len):
+            inputs = x[:,t]
+            ts = timespans[:,t-1:t+1]
+            
+            hidden_state = self.cell.forward(inputs, hidden_state, ts)
+            lstm_out = self.dropout(hidden_state[0])
+            lstm_out = self.relu(self.fc1(lstm_out))
+            current_output = self.fc1(lstm_out)
+            # outputs.append(current_output)
+            last_output = current_output 
+        
+        # outputs = torch.stack(outputs, dim=1)
+
+        return last_output
+    
+    def training_step(self, batch, batch_idx):
+        X, y = batch
+        logits = self.forward(X[:,:,[1,2]], X[:,:,0])
+        criterion = nn.CrossEntropyLoss()
+        loss = criterion(logits, y)
+
+        return loss
+    
+    def test_step(self, batch, batch_idx):
+        X, y = batch
+        logits = self.forward(X[:,:,[1,2]], X[:,:,0])
+        total = 0
+        correct = 0
+        for i in range(len(logits)):
+            pred = logits[i].argmax(dim=0, keepdim=True)
+            print(pred)
+            if (pred[0] == y[i]):
+                correct += 1
+            total += 1
+
+        metrics = {'correct': correct, 'total': total}
+        return metrics
+
+    def test_epoch_end(self, outputs):
+        correct = sum([x['correct'] for x in outputs])
+        total = sum([x['total'] for x in outputs])
+        print(100*correct/total)
+        return {'overall_accuracy': 100*correct/total}   
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=1e-4)
+
+
+if __name__ == '__main__':
+    data_module = GBPUSDDataModule(window=10, batch_size=32, pred_horizon=10, with_time=True)
+    # model = LSTM(input_size=2, hidden_size=100, seq_len=10, num_layers=2)
+    model = ODELSTM(input_size=2, hidden_size=100, seq_len=10)
+    trainer = pl.Trainer(max_epochs=20, gpus=1)
+    trainer.fit(model, data_module)
+    trainer.test()
+
+
+for i, t in enumerate(ts):
+            trajectory.append(self.ode.trajectory(hx[0].to(device), t.to(device))[1])
+        trajectory = torch.stack(trajectory)
+        
+        new_h = trajectory[torch.arange(batch_size),torch.arange(batch_size),:]
+
+        new_h, new_c = self.lstm(inputs.to(device), (new_h.to(device), hx[1].to(device)))

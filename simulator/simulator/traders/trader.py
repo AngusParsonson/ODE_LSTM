@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 class Trader(ABC):
     @abstractmethod
     def respond(self, tick):
-        '''Called by the main loop at every timestep
+        '''Called by the main loop whenever there is a new tick
 
         Args:
             tick: current top of limit order book (level 1)

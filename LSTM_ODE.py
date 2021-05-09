@@ -47,9 +47,9 @@ class timeseries(Dataset):
     '''
     def __init__(self,x,y,with_time=True):
         if with_time:
-            self.x = torch.tensor(x,dtype=torch.float32)[:,:,[0,1,2,3,4,5,6,8]]
+            self.x = torch.tensor(x,dtype=torch.float32)[:,:,[0,1,2,3,4,5,6,9]]
         else:
-            self.x = torch.tensor(x,dtype=torch.float32)[:,:,[1,2,3,4,5,6,8]]
+            self.x = torch.tensor(x,dtype=torch.float32)[:,:,[1,2,3,4,5,6,9]]
 
         print(self.x.shape)
         self.y = torch.tensor(y,dtype=torch.long)
@@ -80,7 +80,7 @@ class GBPUSDDataModule(pl.LightningDataModule):
         self.test_data = timeseries(X_test, y_test, with_time=self.with_time)
 
     def load_data(self, train_days, test_days):
-        path_to_data = r"/work/ap17691/lob_data/" + self.data_type + r"/"
+        path_to_data = r"C:\Users\Angus Parsonson\Documents\University\Fourth Year\Dissertation\data\\" + self.data_type + r"\\"
         train_dfs = []
         test_dfs = []
         for i, f in enumerate(os.listdir(path_to_data)):
@@ -117,7 +117,7 @@ class GBPUSDDataModule(pl.LightningDataModule):
         return test_dataloader
 
     def normalise(self, data):
-        ind = [1,2,3,4,5,6]
+        ind = [1,2,3,4,5,6,8]
         mc = data[:,ind]
         data[:,ind] = (mc - mc.min()) / (mc.max() - mc.min())
 
@@ -156,6 +156,7 @@ class GBPUSDDataModule(pl.LightningDataModule):
 
         df['NormMovingAvg'] = MicroExpMovingAvg
         df['MicroExpMovingAvg'] = MicroExpMovingAvg
+        df['OrderBookImbalance'] = (df['BidVolume'] - df['AskVolume']) / (df['BidVolume'] + df['AskVolume'])
         return df
 
     def get_dir(self, curr_mvavg, next_mvavg):
@@ -275,7 +276,8 @@ class LSTM(pl.LightningModule):
         total = 0
         correct = 0
         for i in range(len(logits)):
-            pred = logits[i].argmax(dim=0, keepdim=True)
+            # pred = logits[i].argmax(dim=0, keepdim=True)
+            pred = torch.max(logits[i], dim = 1)
             # print(logits[i], labels[i])
             if (pred[0] == labels[i]):
                 correct += 1
@@ -311,13 +313,21 @@ class ODELSTMCell(nn.Module):
     def forward(self, inputs, hx, ts):
         batch_size = ts.size(0)
 
-        new_h = torch.zeros(batch_size, hx[0].size(1)).to(device)
-        if (ODE):
-            for batch_idx, batch in enumerate(ts):
-                new_h[batch_idx] = self.ode.trajectory(hx[0][batch_idx].to(device), batch.to(device))[1].to(device)
-
-            new_h, new_c = self.lstm(inputs.to(device), (new_h.to(device), hx[1].to(device)))
+        # new_h = torch.zeros(batch_size, hx[0].size(1)).to(device)
+        if (self.use_ODE):
+            new_h, new_c = self.lstm(inputs.to(device), (hx[0].to(device), hx[1].to(device)))
             new_h, new_c = self.lstm(inputs.to(device), (new_h.to(device), new_c.to(device)))
+            ht = torch.zeros(batch_size, hx[0].size(1)).to(device)
+            # ht = self.ode.trajectory(new_h, ts[0])[1]
+            for batch_idx, batch in enumerate(ts):
+                ht[batch_idx] = self.ode.trajectory(new_h[batch_idx].to(device), batch.to(device))[1].to(device)
+
+            return (ht, new_c)
+            # for batch_idx, batch in enumerate(ts):
+            #     new_h[batch_idx] = self.ode.trajectory(hx[0][batch_idx].to(device), batch.to(device))[1].to(device)
+
+            # new_h, new_c = self.lstm(inputs.to(device), (new_h.to(device), hx[1].to(device)))
+            # new_h, new_c = self.lstm(inputs.to(device), (new_h.to(device), new_c.to(device)))
 
         new_h, new_c = self.lstm(inputs.to(device), (hx[0].to(device), hx[1].to(device)))
         new_h, new_c = self.lstm(inputs.to(device), (new_h.to(device), new_c.to(device)))
@@ -336,10 +346,10 @@ class ODELSTM(pl.LightningModule):
         self.seq_len = seq_len
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(0.5)
-        self.soft = nn.Softmax(dim=-1)
         self.bn = nn.BatchNorm1d(self.seq_len)
 
     def forward(self, x, timespans):
+        print(x.shape, timespans.shape)
         batch_size = x.size(0)
         seq_len = x.size(1)
 
@@ -376,32 +386,89 @@ class ODELSTM(pl.LightningModule):
         logits = self.forward(X[:,:,list(range(1,self.input_size+1))], X[:,:,0])
         total = 0
         correct = 0
+        true_pos_up = 0
+        true_pos_dwn = 0
+        false_pos_up = 0
+        false_pos_dwn = 0
+        false_neg_dwn = 0
+        false_neg_up = 0
         for i in range(len(logits)):
             pred = logits[i].argmax(dim=0, keepdim=True)
+            print(logits[i])
+            print(pred)
+            # pred = torch.max(logits[i], dim = 0)
             # print(pred)
             if (pred[0] == y[i]):
                 correct += 1
+                if (y[i] == 2): 
+                    true_pos_up += 1
+                else:
+                    true_pos_dwn += 1
+            else: 
+                if (pred[0] == 2): 
+                    false_pos_up += 1
+                    false_neg_dwn += 1
+                else:
+                    false_pos_dwn += 1
+                    false_neg_up += 1
+
             total += 1
 
-        metrics = {'correct': correct, 'total': total}
+        # precision, recall, F1
+        metrics = { 'correct': correct, 
+                    'total': total,
+                    'true_pos_up': true_pos_up,
+                    'true_pos_dwn': true_pos_dwn,
+                    'false_pos_up': false_pos_up,
+                    'false_pos_dwn': false_pos_dwn,
+                    'false_neg_up': false_neg_up,
+                    'false_neg_dwn': false_neg_dwn}
+
         return metrics
 
     def test_epoch_end(self, outputs):
         correct = sum([x['correct'] for x in outputs])
         total = sum([x['total'] for x in outputs])
-        print(100*correct/total)
+        true_pos_up = sum([x['true_pos_up'] for x in outputs])
+        false_pos_up = sum([x['false_pos_up'] for x in outputs])
+        true_pos_dwn = sum([x['true_pos_dwn'] for x in outputs])
+        false_pos_dwn = sum([x['false_pos_dwn'] for x in outputs])
+        false_neg_dwn = sum([x['false_neg_dwn'] for x in outputs])
+        false_neg_up = sum([x['false_neg_up'] for x in outputs])
+
+        precision_up = true_pos_up / (true_pos_up + false_pos_up)
+        precision_dwn = true_pos_dwn / (true_pos_dwn + false_pos_dwn)
+        recall_up = true_pos_up / (true_pos_up + false_neg_up)
+        recall_dwn = true_pos_dwn / (true_pos_dwn + false_neg_dwn)
+        precision = (precision_up + precision_dwn) / 2
+        recall = (recall_up + recall_dwn) / 2
+        print("Accuracy: " + str(100*correct/total))
+        print("Precision up: " + str(precision_up))
+        print("Precision down: " + str(precision_dwn))
+        print("Recall up: " + str(recall_up))
+        print("Recall down: " + str(recall_dwn))
+        print("F1-score: " + str(2 * (precision * recall) / (precision + recall)))
+
+        # self.log({'overall_accuracy': 100*correct/total,
+        #         'up_precision': precision_up,
+        #         'down_precision': precision_dwn,
+        #         'up_recall': recall_up,
+        #         'down_recall': recall_dwn,
+        #         'precision': precision,
+        #         'recall': recall,
+        #         'F1-score': 2 * (precision * recall) / (precision + recall)})
         return {'overall_accuracy': 100*correct/total}
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-5)
+        return torch.optim.Adam(self.parameters(), lr=1e-4)
 
 if __name__ == '__main__':
     # print(torch.cuda.is_available())
-    data_module = GBPUSDDataModule(data_type="WTB", window=50, batch_size=64, pred_horizon=100, alpha=0.0000, with_time=True)
-    # model = LSTM(input_size=7, hidden_size=100, seq_len=50, num_layers=1)
+    data_module = GBPUSDDataModule(data_type="WTB", window=50, batch_size=64, pred_horizon=50, alpha=0.0000, with_time=True)
+    # model = LSTM(input_size=7, hidden_size=100, seq_len=50, num_layers=10)
     model = ODELSTM(use_ODE=False, input_size=7, hidden_size=100, seq_len=50)
-    logger = TensorBoardLogger('tb_logs', name='LSTM-100')
-    trainer = pl.Trainer(max_epochs=40, gpus=1, logger=logger)
+    logger = TensorBoardLogger('tb_logs', name='ODE_LSTM-50')
+    trainer = pl.Trainer(max_epochs=1, logger=logger)
 
     trainer.fit(model, data_module)
     trainer.test()

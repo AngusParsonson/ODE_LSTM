@@ -15,3 +15,12 @@ time-series prediction or does it just spit out a price based on the LOB?
 
 Would it be possible to try and train deeptrader to choose its own limit price?
 (e.g. training it to predict a price and enter when profit forseen?)
+____________________________________________________
+
+What stuff should I talk about in my critical evaluation section?
+- Not much apart from testing metrics, tradeoffs made in design?
+
+Is the page limit on each section a strict guideline?
+- Covered the majority of project execution quickly.
+- How much is there to talk about neural network architecture?
+- Aaron seemed not to write much for this section.

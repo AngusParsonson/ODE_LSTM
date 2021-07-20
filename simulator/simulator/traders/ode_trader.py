@@ -2,6 +2,7 @@ from traders.trader import Trader
 import collections 
 import random
 import sys
+import time
 
 import torch
 import torch.nn as nn
@@ -153,25 +154,26 @@ class ODELSTM(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=1e-4)
 
 class ODETrader(Trader):
-    def __init__(self, init_balance=0):
+    def __init__(self, init_balance=0, pred_horizon=100):
         self.balance = init_balance
+        self.pred_horizon = pred_horizon
         self.stock = 0
         self.potential_stock = 0
         self.tick_num = 0
         self.orders = []
-        self.model= ODELSTM.load_from_checkpoint(__file__ + "\\..\\" + "epoch=39-step=25079.ckpt", input_size=7, seq_len=50)
+        self.model= ODELSTM.load_from_checkpoint(__file__ + "\\..\\" + "ode_pred_50.ckpt", use_ODE=True, input_size=7, seq_len=50)
         self.model.eval()
         self.ticks = collections.deque()
         self.micros = collections.deque()
         self.emas = collections.deque()
         self.total = 0
-        self.buy_orders = []
-        self.sell_orders = []
+        self.buy_orders = collections.deque()
+        self.sell_orders = collections.deque()
         self.ema = 0
         self.ones = 0
         self.twos = 0
-        self.diff = 0
-        self.smooth = 2/101
+        self.diffs = []
+        self.smooth = 2/(self.pred_horizon+1.0)
         self.bid_norm_vals = {'max_p': 0, 'min_p': float('inf'), 
                               'max_v': 0, 'min_v': float('inf')}
         self.ask_norm_vals = {'max_p': 0, 'min_p': float('inf'), 
@@ -182,19 +184,27 @@ class ODETrader(Trader):
 
     def respond(self, tick):
         new_orders = []
-        if self.tick_num % 100 == 0:
-            print("time: " + str(tick['Local time']))
+        # if self.tick_num % 100 == 0:
+        #     print("time: " + str(tick['Local time']))
         self.tick_num += 1
         microprice = ((tick['Bid'] * tick['AskVolume'] + 
                     tick['Ask'] * tick['BidVolume']) / 
                     (tick['AskVolume'] + tick['BidVolume']))
-        for order in self.buy_orders:
+        for order in list(self.buy_orders):
             if (order[0] == self.tick_num): #or (tick['Local time'] > 30000 and self.stock > 0)
-                self.diff -= (microprice - order[1])*tick['BidVolume']
-        for order in self.sell_orders:
-            if (order == self.tick_num): #or (tick['Local time'] > 30000 and self.stock > 0)
-                self.diff += (microprice - order[1])*tick['BidVolume']
-
+                self.diffs.append(-(microprice - order[1]))
+                new_orders.append({'type': 'BID', 'price': microprice, 'quantity': tick['AskVolume']})
+                self.buy_orders.popleft()
+            else: 
+                break
+        for order in list(self.sell_orders):
+            if (order[0] == self.tick_num): #or (tick['Local time'] > 30000 and self.stock > 0)
+                self.diffs.append(microprice - order[1])
+                new_orders.append({'type': 'ASK', 'price': microprice, 'quantity': tick['BidVolume']})
+                self.sell_orders.popleft()
+            else: 
+                break
+        
         self.ticks.append(tick)
         self.micros.append(microprice)
         self.total += microprice
@@ -209,26 +219,23 @@ class ODETrader(Trader):
             self.ticks.popleft()
             self.__update_norm_vals__()
             inputs, timespans = self.__gen_inputs__()
-            
-            # inputs = torch.Tensor(np.zeros(shape=(1,50,7))).float()
-            # timespans = torch.Tensor(np.array([np.arange(50)])).float()
-            # print(timespans.shape)
+
             output = self.model(inputs, timespans)
+
             direction = torch.argmax(output).item()
-            # print(torch.exp(output))
-            # print(torch.exp(output)[0][direction].item())
-            # direction = random.randint(1,2)
-            # if (torch.exp(output)[0][direction].item() / sum(torch.exp(output)[0]) >= 0.9):
-            if (direction == 2):# and self.potential_stock < 1):
-                self.twos += 1
-                self.potential_stock += tick['AskVolume']
-                # print(self.potential_stock)
-                new_orders.append({'type': 'BID', 'price': microprice, 'quantity': tick['AskVolume']})
-            else:#if (self.potential_stock > -1):
-                self.ones += 1
-                self.potential_stock -= tick['BidVolume']
-                # print(self.potential_stock)
-                new_orders.append({'type': 'ASK', 'price': microprice, 'quantity': tick['BidVolume']})
+            certainty = torch.exp(output)[0][direction].item() / sum(torch.exp(output)[0])
+
+            if (tick['Local time'] <= 28000 and certainty >= 0.85):
+                if (direction == 2):# and self.potential_stock < 1):
+                    self.twos += 1
+                    self.potential_stock += tick['AskVolume']
+                    self.sell_orders.append((self.tick_num + self.pred_horizon, microprice))
+                    new_orders.append({'type': 'BID', 'price': microprice, 'quantity': tick['AskVolume']})
+                else:#if(direction == 0):#if (self.potential_stock > -1):
+                    self.ones += 1
+                    self.potential_stock -= tick['BidVolume']
+                    self.buy_orders.append((self.tick_num + self.pred_horizon, microprice))
+                    new_orders.append({'type': 'ASK', 'price': microprice, 'quantity': tick['BidVolume']})
         
         if len(new_orders) == 0:
             return None
@@ -237,11 +244,9 @@ class ODETrader(Trader):
 
     def filled_order(self, order):
         if (order['type'] == 'BID'):
-            self.sell_orders.append((self.tick_num + 100, order['price']))
             self.stock += order['quantity']
             self.balance -= order['price'] * order['quantity']
         else:
-            self.buy_orders.append((self.tick_num+100, order['price']))
             self.stock -= order['quantity']
             self.balance += order['price'] * order['quantity']
         # print(self.balance + (self.stock * self.micros[-1]))
@@ -252,7 +257,10 @@ class ODETrader(Trader):
         print("net worth: " + str(self.balance + (self.stock * self.micros[-1])))
         print("balance: " + str(self.balance))
         print("quantity: " + str(self.stock))
-        print("diff: " + str(self.diff))
+        print("profit: " + str(self.balance - 4000))
+        print("std_dev: " + str(statistics.stdev(self.diffs)))
+
+        return ([self.balance - 4000, self.ones, self.twos, statistics.stdev(self.diffs)])
 
     def __gen_inputs__(self):
         inputs = []

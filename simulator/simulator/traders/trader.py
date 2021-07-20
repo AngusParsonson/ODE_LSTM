@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 class Trader(ABC):
     @abstractmethod
     def respond(self, tick):
-        '''Called by the main loop whenever there is a new tick
+        '''Called by the exchange whenever there is a new tick
 
         Args:
             tick: current top of limit order book (level 1)
@@ -14,18 +14,18 @@ class Trader(ABC):
                 tick['BidVolume'] = current best bid volume
                 tick['DeltaT'] = time in seconds since last tick
         Returns:
-            A dict representing a message to the order book 
-            {
+            A list of dicts each representing a message to the order book 
+            [{
                 type: "BID" or "ASK",
                 price: float,
                 quantity: float
-            }
+            }]
         '''
         pass
     
     @abstractmethod
     def filled_order(self, order):
-        '''Called by the main loop whenever a trader's order is filled
+        '''Called by the exchange whenever on of this trader's orders is filled
 
         Args:
             order: A dict representing the fulfilled order 

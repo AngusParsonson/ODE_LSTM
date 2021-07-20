@@ -24,3 +24,10 @@ Is the page limit on each section a strict guideline?
 - Covered the majority of project execution quickly.
 - How much is there to talk about neural network architecture?
 - Aaron seemed not to write much for this section.
+____________________________________________________
+
+Is t-statistic a good thing? have you heard of it?
+Is doing profit per trade and t-statistic, box-plots good for critical 
+eval?
+Should critical eval logically go through the objectives that I set
+out at the start? (show him your objectives)

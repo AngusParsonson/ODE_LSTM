@@ -1,0 +1,205 @@
+LSTM pred-20, 28000s, 0.6 certainty
+
+trading day: WTB.GBGBX_Ticks_07.04.2021-07.04.2021.csv
+ones: 561 twos: 33
+net worth: 4075.843909090878
+balance: 4075.843909090878
+quantity: 0
+profit: 75.84390909087779
+std_dev: 4.5168552319021575
+
+trading day: WTB.GBGBX_Ticks_08.04.2021-08.04.2021.csv
+ones: 423 twos: 13
+net worth: 4260.636272727267
+balance: 4260.636272727267  
+quantity: 0
+profit: 260.63627272726717
+std_dev: 3.5728876493631865
+
+trading day: WTB.GBGBX_Ticks_09.04.2021-09.04.2021.csv
+ones: 783 twos: 173
+net worth: 4644.79854545451
+balance: 4644.79854545451
+quantity: 0
+profit: 644.7985454545096
+std_dev: 4.373731980965075
+
+trading day: WTB.GBGBX_Ticks_12.04.2021-12.04.2021.csv
+ones: 1179 twos: 249
+net worth: 4331.704272727263
+balance: 4331.704272727263
+quantity: 0
+profit: 331.70427272726283
+std_dev: 4.566602745850665
+
+trading day: WTB.GBGBX_Ticks_13.04.2021-13.04.2021.csv
+ones: 1187 twos: 353
+net worth: 4064.2050454545374
+balance: 4064.2050454545374
+quantity: 0
+profit: 64.20504545453741
+std_dev: 4.379298055599278
+
+trading day: WTB.GBGBX_Ticks_19.04.2021-19.04.2021.csv
+ones: 1188 twos: 369
+net worth: 4340.124954545308
+balance: 4340.124954545308
+quantity: 0
+profit: 340.12495454530836
+std_dev: 4.555277120157677
+
+trading day: WTB.GBGBX_Ticks_22.04.2021-22.04.2021.csv
+ones: 424 twos: 37
+net worth: 4112.015409090916
+balance: 4112.015409090916
+quantity: 0
+profit: 112.01540909091636
+std_dev: 4.477070266952174
+
+trading day: WTB.GBGBX_Ticks_27.04.2021-27.04.2021.csv
+ones: 485 twos: 2
+net worth: 4506.630272727293
+balance: 4506.630272727293
+quantity: 0
+profit: 506.63027272729323
+std_dev: 7.059618162802378
+
+LSTM, pred-50, 28000s, 0.6 certainty
+
+trading day: WTB.GBGBX_Ticks_07.04.2021-07.04.2021.csv
+ones: 125 twos: 43
+net worth: 3586.9903181818313
+balance: 3586.9903181818313
+quantity: 0
+profit: -413.0096818181687
+std_dev: 7.020346755094457
+
+trading day: WTB.GBGBX_Ticks_08.04.2021-08.04.2021.csv
+ones: 92 twos: 2
+net worth: 4130.662999999984
+balance: 4130.662999999984
+quantity: 0
+profit: 130.6629999999841
+std_dev: 5.8108006463669115
+
+trading day: WTB.GBGBX_Ticks_09.04.2021-09.04.2021.csv
+ones: 257 twos: 191
+net worth: 4328.0784090909
+balance: 4328.0784090909
+quantity: 0
+profit: 328.0784090909001
+std_dev: 7.548842070687484
+
+trading day: WTB.GBGBX_Ticks_12.04.2021-12.04.2021.csv
+ones: 325 twos: 259
+net worth: 4276.617454545471
+balance: 4276.617454545471
+quantity: 0
+profit: 276.61745454547145
+std_dev: 8.492137602998579
+
+trading day: WTB.GBGBX_Ticks_13.04.2021-13.04.2021.csv
+ones: 325 twos: 446
+net worth: 5007.840090909005
+balance: 5007.840090909005
+quantity: 0
+profit: 1007.8400909090051
+std_dev: 7.887245824995818
+
+trading day: WTB.GBGBX_Ticks_19.04.2021-19.04.2021.csv
+ones: 352 twos: 460
+net worth: 4253.6941818181385
+balance: 4253.6941818181385
+quantity: 0
+profit: 253.69418181813853
+std_dev: 7.717048579396459
+
+trading day: WTB.GBGBX_Ticks_31.03.2021-31.03.2021.csv
+ones: 559 twos: 660
+net worth: 4012.926863636416
+balance: 4012.926863636416
+quantity: 0
+profit: 12.926863636415874
+std_dev: 5.897552270345615
+
+trading day: WTB.GBGBX_Ticks_22.04.2021-22.04.2021.csv
+ones: 102 twos: 28
+net worth: 4193.552636363637
+balance: 4193.552636363637
+quantity: 0
+profit: 193.55263636363725
+std_dev: 8.761686597901178
+
+trading day: WTB.GBGBX_Ticks_27.04.2021-27.04.2021.csv
+ones: 235 twos: 2
+net worth: 4420.242727272728
+balance: 4420.242727272728
+quantity: 0
+profit: 420.2427272727282
+std_dev: 10.30309084742008
+
+LSTM, pred-100, 28000s, 0.6 certainty
+
+trading day: WTB.GBGBX_Ticks_07.04.2021-07.04.2021.csv
+ones: 220 twos: 1
+net worth: 3887.932954545325
+balance: 3887.932954545325
+quantity: 0
+profit: -112.06704545467483
+std_dev: 6.290093507491938
+
+trading day: WTB.GBGBX_Ticks_08.04.2021-08.04.2021.csv
+ones: 135 twos: 0
+net worth: 4433.190045454534
+balance: 4433.190045454534
+quantity: 0
+profit: 433.1900454545339
+std_dev: 7.073202497082475
+
+trading day: WTB.GBGBX_Ticks_09.04.2021-09.04.2021.csv
+ones: 406 twos: 116
+net worth: 4641.039909090929
+balance: 4641.039909090929
+quantity: 0
+profit: 641.0399090909286
+std_dev: 10.529358758551108
+
+trading day: WTB.GBGBX_Ticks_12.04.2021-12.04.2021.csv
+ones: 536 twos: 109
+net worth: 4343.526499999836
+balance: 4343.526499999836
+quantity: 0
+profit: 343.52649999983623
+std_dev: 11.105914101103323
+
+trading day: WTB.GBGBX_Ticks_13.04.2021-13.04.2021.csv
+ones: 533 twos: 300
+net worth: 5226.530181818245
+balance: 5226.530181818245
+quantity: 0
+profit: 1226.5301818182452
+std_dev: 10.69711582470467
+
+trading day: WTB.GBGBX_Ticks_19.04.2021-19.04.2021.csv
+ones: 564 twos: 298
+net worth: 4748.336590909186
+balance: 4748.336590909186
+quantity: 0
+profit: 748.3365909091863
+std_dev: 11.409150485250498
+
+trading day: WTB.GBGBX_Ticks_22.04.2021-22.04.2021.csv
+ones: 175 twos: 0
+net worth: 4458.648318181761
+balance: 4458.648318181761
+quantity: 0
+profit: 458.64831818176117
+std_dev: 11.50373790829567
+
+trading day: WTB.GBGBX_Ticks_27.04.2021-27.04.2021.csv
+ones: 285 twos: 0
+net worth: 5558.692727272712
+balance: 5558.692727272712
+quantity: 0
+profit: 1558.6927272727116
+std_dev: 12.63300275824837

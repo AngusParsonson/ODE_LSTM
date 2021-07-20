@@ -349,7 +349,6 @@ class ODELSTM(pl.LightningModule):
         self.bn = nn.BatchNorm1d(self.seq_len)
 
     def forward(self, x, timespans):
-        print(x.shape, timespans.shape)
         batch_size = x.size(0)
         seq_len = x.size(1)
 
@@ -394,8 +393,6 @@ class ODELSTM(pl.LightningModule):
         false_neg_up = 0
         for i in range(len(logits)):
             pred = logits[i].argmax(dim=0, keepdim=True)
-            print(logits[i])
-            print(pred)
             # pred = torch.max(logits[i], dim = 0)
             # print(pred)
             if (pred[0] == y[i]):
@@ -464,10 +461,11 @@ class ODELSTM(pl.LightningModule):
 
 if __name__ == '__main__':
     # print(torch.cuda.is_available())
+    print(os.getcwd())
     data_module = GBPUSDDataModule(data_type="WTB", window=50, batch_size=64, pred_horizon=50, alpha=0.0000, with_time=True)
     # model = LSTM(input_size=7, hidden_size=100, seq_len=50, num_layers=10)
-    model = ODELSTM(use_ODE=False, input_size=7, hidden_size=100, seq_len=50)
-    logger = TensorBoardLogger('tb_logs', name='ODE_LSTM-50')
+    model = ODELSTM(use_ODE=True, input_size=7, hidden_size=100, seq_len=50)
+    logger = TensorBoardLogger('tb_logs', name='ode_logs')
     trainer = pl.Trainer(max_epochs=1, logger=logger)
 
     trainer.fit(model, data_module)

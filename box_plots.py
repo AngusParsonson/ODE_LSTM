@@ -11,7 +11,7 @@ from seaborn.categorical import boxplot
 sns.set(rc={'figure.figsize':(8,5)})
 # sns.set(rc={'figure.figsize':(10,5)})
 
-lstm_100_profits = [[-112.06704545467483, 220, 1, 6.290093507491938],
+lstm_100_profits = [[-112.06704545467483, 220, 1, 6.290093507491938], 
                     [433.1900454545339, 135, 0, 7.073202497082475],
                     [641.0399090909286, 406, 116, 10.529358758551108],
                     [343.52649999983623, 536, 109, 11.105914101103323],
@@ -118,18 +118,24 @@ dict_n_100 = {'ODE': calc_norms(ode_100_profits),
               'LSTM': calc_norms(lstm_100_profits)}
 dict_t_100 = {'ODE': calc_t_stats(ode_100_profits),
               'LSTM': calc_t_stats(lstm_100_profits)}
-compare(dict_n_100, dict_t_100, "100 Horizon", "Model")
+# compare(dict_n_100, dict_t_100, "100 Horizon", "Model")
 
 dict_n_50 = {'ODE': calc_norms(ode_50_profits),
              'LSTM': calc_norms(lstm_50_profits)}
 dict_t_50 = {'ODE': calc_t_stats(ode_50_profits),
              'LSTM': calc_t_stats(lstm_50_profits)}
-compare(dict_n_50, dict_t_50, "50 Horizon", "Model")
+# compare(dict_n_50, dict_t_50, "50 Horizon", "Model")
 
 dict_n_20 = {'ODE': calc_norms(ode_20_profits),
              'LSTM': calc_norms(lstm_20_profits)}
 dict_t_20 = {'ODE': calc_t_stats(ode_20_profits),
              'LSTM': calc_t_stats(lstm_20_profits)}
-compare(dict_n_20, dict_t_20, "20 Horizon", "Model")
+# compare(dict_n_20, dict_t_20, "20 Horizon", "Model")
+
+for elem in ode_100_profits:
+    print(elem[0] / (elem[1] + elem[2]))
+print("hello")
+for elem in lstm_100_profits:
+    print(elem[0] / (elem[1] + elem[2]))
 
 

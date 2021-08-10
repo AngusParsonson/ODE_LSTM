@@ -10,3 +10,6 @@ pred_horizon 50:
 
 LSTM binary, GBPUSD, pred_horizon 20: 
 ^^ pred_horizon 100: 55.00
+
+ODE speed = 0.08712810555637727
+LSTM speed = 0.018846978696917135
